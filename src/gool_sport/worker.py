@@ -64,6 +64,7 @@ class SportWorker:
         fs_today=self.flash.today(cfg.flashscore_id);states={row.event_id:row for row in fs_today};rows=load(self.journal_path);changed=settle(rows,states)
         if changed:save(self.journal_path,rows)
         fs_live=[row for row in fs_today if row.is_live];xlive=self.xbet.index(cfg.key,cfg.xbet_id);mapped=map_events(xlive,fs_live)[:max(1,env_int("GOOL_SPORT_MAX_MAPPED_PER_SPORT",120))];decoded=mismatch=failed=detected=0;latest=[];diagnostics=[];workers=max(2,min(16,env_int("GOOL_SPORT_GAME_WORKERS",8)))
+        xbet_diag=dict(self.xbet.last_index_diag.get(cfg.key) or {})
         with ThreadPoolExecutor(max_workers=workers) as pool:
             jobs=[pool.submit(self._snapshot,cfg,xr,fs,rev,ms) for xr,fs,rev,ms in mapped]
             for future in as_completed(jobs):
@@ -78,12 +79,14 @@ class SportWorker:
                 decoded+=1;hist,changed_at=self._append(row,cfg);sig=detect_signal(hist,cfg,now=float(row["ts"]),score_changed_at=changed_at)
                 if sig is not None:detected+=int(self._record_signal(row,sig,cfg));row["signal"]=sig.to_dict()
                 latest.append(row)
-        return {"enabled":True,"flashscore_live":len(fs_live),"xbet_live":len(xlive),"mapped":len(mapped),"decoded":decoded,"score_mismatch":mismatch,"market_decode_failed":failed,"detected":detected,"diagnostics":diagnostics,"matches":latest[:80]}
+        return {"enabled":True,"flashscore_live":len(fs_live),"xbet_live":len(xlive),"mapped":len(mapped),"decoded":decoded,"score_mismatch":mismatch,"market_decode_failed":failed,"detected":detected,"diagnostics":diagnostics,"xbet_diag":xbet_diag,"matches":latest[:80]}
     def collect_once(self):
         started=time.time();sports={}
         for key,cfg in SPORTS.items():
             if not sport_enabled(key):sports[key]={"enabled":False};continue
             sports[key]=self._scan(cfg);row=sports[key];print(f"GOOL_{key.upper()} fs={row['flashscore_live']} xbet={row['xbet_live']} mapped={row['mapped']} decoded={row['decoded']} mismatch={row['score_mismatch']} decode_fail={row['market_decode_failed']} signals={row['detected']}",flush=True)
+            if not (row.get("xbet_diag") or {}).get("ok"):
+                print(f"GOOL_{key.upper()}_XBET_DIAG "+json.dumps(row.get("xbet_diag") or {},ensure_ascii=False,separators=(",",":")),flush=True)
             if row["diagnostics"]:
                 print(f"GOOL_{key.upper()}_DIAG "+" || ".join(row["diagnostics"][:3]),flush=True)
         state={"captured_at":datetime.now(timezone.utc).isoformat(),"latency_ms":int((time.time()-started)*1000),"mode":os.getenv("GOOL_SPORT_MODE","shadow"),"sports":sports};self.state_path.parent.mkdir(parents=True,exist_ok=True);tmp=self.state_path.with_suffix(".tmp");tmp.write_text(json.dumps(state,ensure_ascii=False,separators=(",",":")),"utf-8");tmp.replace(self.state_path)
