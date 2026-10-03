@@ -14,8 +14,25 @@ from .xbet import XBet,balanced_total,clock_seconds,period,score
 
 class SportWorker:
     def __init__(self,runtime=None):
-        self.runtime=runtime or Path(os.getenv("RUNTIME_DATA_DIR","data"));live=self.runtime/"live";self.state_path=live/"state.json";self.history_path=live/"market_memory.jsonl";self.journal_path=live/"signals.json";self.flash=Flashscore();self.xbet=XBet();self.history=defaultdict(lambda:deque(maxlen=50));self.last_score={};self.score_changed_at={};self.last_period={};self.stop_event=threading.Event();self.poller=CommandPoller(self.journal_path,self.state_path)
+        self.runtime=runtime or Path(os.getenv("RUNTIME_DATA_DIR","data"));live=self.runtime/"live";self.state_path=live/"state.json";self.history_path=live/"market_memory.jsonl";self.journal_path=live/"signals.json";self.flash=Flashscore();self.xbet=XBet();self.history=defaultdict(lambda:deque(maxlen=50));self.last_score={};self.score_changed_at={};self.last_period={};self.stop_event=threading.Event();self.poller=CommandPoller(self.journal_path,self.state_path);self._restore_history()
     def stop(self):self.stop_event.set()
+    def _restore_history(self):
+        try:
+            size=self.history_path.stat().st_size
+            with self.history_path.open("rb") as fh:
+                fh.seek(max(0,size-4*1024*1024));data=fh.read()
+            if size>4*1024*1024 and b"\n" in data:data=data.split(b"\n",1)[1]
+        except FileNotFoundError:
+            return
+        restored=0
+        for raw in data.splitlines():
+            try:state=json.loads(raw.decode("utf-8"))
+            except Exception:continue
+            for key,cfg in SPORTS.items():
+                for row in ((state.get("sports") or {}).get(key) or {}).get("matches") or []:
+                    if not isinstance(row,dict) or not row.get("event_id") or row.get("ts") is None:continue
+                    self._append(row,cfg);restored+=1
+        if restored:print(f"GOOL_SPORT_MEMORY restored_snapshots={restored}",flush=True)
     def _snapshot(self,cfg,xrow,fs,rev,map_score):
         event_id=str(xrow.get("I") or "");game=xrow;total=balanced_total(game);xs=score(game)
         if total is None or xs is None:game=self.xbet.game(cfg.key,event_id) or {};total=balanced_total(game);xs=score(game)
