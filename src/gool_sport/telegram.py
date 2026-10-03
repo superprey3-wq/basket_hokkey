@@ -31,7 +31,7 @@ class CommandPoller:
         sports=state.get("sports") or {};lines=["🧠 <b>GOOL SPORT · STATUS</b>"]
         for key,icon in (("basketball","🏀"),("hockey","🏒")):
             row=sports.get(key) or {}
-            lines.append(f"{icon} выключен" if row.get("enabled") is False else f"{icon} FS {row.get('flashscore_live',0)} · 1xBet {row.get('xbet_live',0)} · mapped {row.get('mapped',0)} · decoded {row.get('decoded',0)}")
+            lines.append(f"{icon} выключен" if row.get("enabled") is False else f"{icon} FS {row.get('flashscore_live',0)} · 1xBet {row.get('xbet_live',0)} · mapped {row.get('mapped',0)} · decoded {row.get('decoded',0)} · mismatch {row.get('score_mismatch',0)} · decode_fail {row.get('market_decode_failed',0)}")
         lines.append(f"Режим: <b>{os.getenv('GOOL_SPORT_MODE','shadow').upper()}</b>");return "\n".join(lines)
     def poll_once(self):
         if not _token():return
