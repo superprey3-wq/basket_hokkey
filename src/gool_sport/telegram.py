@@ -40,6 +40,22 @@ class CommandPoller:
         for update in value.get("result") or []:
             self.offset=max(self.offset,int(update.get("update_id") or 0)+1);message=update.get("message") or {};text=str(message.get("text") or "").split("@",1)[0].strip().lower();cid=str((message.get("chat") or {}).get("id") or "")
             if not cid:continue
-            if text in {"/start","/help"}:send("🏀🏒 <b>GOOL SPORT</b>\n\n/status — источники\n/report — shadow результаты\n/help — команды",cid)
+            allowed=_chat_id()
+            if allowed and cid!=allowed:continue
+            if text in {"/start","/help"}:send("🏀🏒 <b>GOOL SPORT</b>\n\n/status — источники\n/in_game — что сейчас отслеживается\n/report — shadow результаты\n/help — команды",cid)
             elif text=="/status":send(self._status(),cid)
             elif text=="/report":send(report(load(self.journal_path)),cid)
+            elif text=="/in_game":
+                try:state=json.loads(self.state_path.read_text("utf-8"))
+                except Exception:state={}
+                lines=["🟢 <b>GOOL SPORT · В ИГРЕ</b>"]
+                shown=0
+                for key,icon in (("basketball","🏀"),("hockey","🏒")):
+                    for row in (((state.get("sports") or {}).get(key) or {}).get("matches") or []):
+                        score=row.get("score") or [0,0];period=str(row.get("period") or "LIVE");line=float(row.get("line") or 0);over=float(row.get("over") or 0);under=float(row.get("under") or 0)
+                        lines.append(f"{icon} <b>{row.get('home','?')} — {row.get('away','?')}</b> · {score[0]}:{score[1]} · {period}\n↳ линия {line:g} · ТБ {over:.2f} / ТМ {under:.2f}")
+                        shown+=1
+                        if shown>=8:break
+                    if shown>=8:break
+                if shown==0:lines.append("Сейчас нет синхронизированных LIVE-матчей.")
+                send("\n\n".join(lines),cid)
