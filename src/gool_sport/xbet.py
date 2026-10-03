@@ -61,15 +61,30 @@ def clock_seconds(game):
     except (TypeError,ValueError):return None
 
 class XBet:
-    def __init__(self):self.roots={}
+    def __init__(self):
+        self.roots={}
+        self.last_index_diag={}
     def index(self,sport_key,sport_id):
-        query=urllib.parse.urlencode({"sports":sport_id,"count":1000,"lng":"en","mode":4,"country":1,"getEmpty":"true"})
-        seen=set()
+        queries=[
+            urllib.parse.urlencode({"sports":sport_id,"count":1000,"lng":"en","mode":4,"country":1,"getEmpty":"true"}),
+            urllib.parse.urlencode({"sports":sport_id,"count":1000,"lng":"en","mode":4,"country":137,"gr":285,"virtualSports":"true","noFilterBlockEvent":"true","getEmpty":"true"}),
+        ]
+        seen=set();attempts=[]
         for root in (self.roots.get(sport_key,ROOTS[0]),*ROOTS):
             if root in seen:continue
-            seen.add(root);payload=get_json(f"{root}/Get1x2_VZip?{query}",headers=HEADERS,timeout=7);values=payload.get("Value") if isinstance(payload,dict) else None
-            if isinstance(values,list) and values:
-                self.roots[sport_key]=root;return [row for row in values if isinstance(row,dict) and row.get("I") and row.get("O1") and row.get("O2")]
+            seen.add(root)
+            for qi,query in enumerate(queries,1):
+                payload=get_json(f"{root}/Get1x2_VZip?{query}",headers=HEADERS,timeout=7)
+                values=payload.get("Value") if isinstance(payload,dict) else None
+                count=len(values) if isinstance(values,list) else 0
+                attempts.append({"root":root,"query":qi,"count":count,"payload":bool(payload)})
+                if isinstance(values,list) and values:
+                    rows=[row for row in values if isinstance(row,dict) and row.get("I") and row.get("O1") and row.get("O2")]
+                    if rows:
+                        self.roots[sport_key]=root
+                        self.last_index_diag[sport_key]={"ok":True,"root":root,"query":qi,"raw":count,"usable":len(rows),"attempts":attempts[-4:]}
+                        return rows
+        self.last_index_diag[sport_key]={"ok":False,"root":None,"query":None,"raw":0,"usable":0,"attempts":attempts[-8:]}
         return []
     def game(self,sport_key,event_id):
         query=urllib.parse.urlencode({"id":event_id,"lng":"en","cfview":0,"isSubGames":"true","GroupEvents":"true","allEventsGroupSubGames":"true","countevents":250,"grMode":2})
