@@ -1,0 +1,1 @@
+# GOOL SPORT v0.1 uses only the Python standard library at runtime.
